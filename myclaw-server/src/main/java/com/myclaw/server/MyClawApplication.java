@@ -25,9 +25,8 @@ public class MyClawApplication {
 
     @Bean
     public OpenAiProvider openAiProvider(WebClient webClient,
-                                          @Value("${myclaw.openai.api-key:}") String apiKey,
                                           ObjectMapper objectMapper) {
-        return new OpenAiProvider(webClient, apiKey, objectMapper);
+        return new OpenAiProvider(webClient, objectMapper);
     }
 
     @Bean

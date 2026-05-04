@@ -48,6 +48,8 @@ public class ConnectMethodHandler implements GatewayMethodHandler {
         methods.add("chat");
         methods.add("sessions");
         methods.add("config");
+        methods.add("models");
+        methods.add("file");
 
         ArrayNode events = features.putArray("events");
         events.add("tick");

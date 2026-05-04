@@ -3,9 +3,10 @@
     <aside class="sidebar">
       <div class="logo">MyClaw</div>
       <nav>
-        <div class="nav-item active">Chat</div>
-        <div class="nav-item">Sessions</div>
-        <div class="nav-item">Settings</div>
+        <router-link to="/chat" class="nav-item" active-class="active">Chat</router-link>
+        <router-link to="/sessions" class="nav-item" active-class="active">Sessions</router-link>
+        <router-link to="/files" class="nav-item" active-class="active">Files</router-link>
+        <router-link to="/settings" class="nav-item" active-class="active">Settings</router-link>
       </nav>
       <div class="status">
         <span class="dot" :class="{ online: gatewayStore.isConnected }"></span>
@@ -13,14 +14,13 @@
       </div>
     </aside>
     <main class="main">
-      <ChatView />
+      <router-view />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted } from 'vue'
-import ChatView from '@/views/ChatView.vue'
 import { useGatewayStore } from '@/stores/gatewayStore'
 
 const gatewayStore = useGatewayStore()
@@ -50,12 +50,14 @@ onMounted(() => {
   margin-bottom: 24px;
 }
 .nav-item {
+  display: block;
   padding: 10px 12px;
   border-radius: 6px;
   cursor: pointer;
   margin-bottom: 4px;
   color: #8b949e;
   transition: all 0.15s;
+  text-decoration: none;
 }
 .nav-item:hover, .nav-item.active {
   background: #21262d;
@@ -84,5 +86,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: #0d1117;
 }
 </style>

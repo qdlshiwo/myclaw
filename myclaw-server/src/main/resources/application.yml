@@ -1,5 +1,5 @@
 server:
-  port: 18789
+  port: 18799
 
 spring:
   jackson:

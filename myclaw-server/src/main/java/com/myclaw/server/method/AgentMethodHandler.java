@@ -9,6 +9,7 @@ import com.myclaw.core.model.AgentContext;
 import com.myclaw.core.model.Session;
 import com.myclaw.core.protocol.AgentRequest;
 import com.myclaw.core.protocol.GatewayFrame;
+import com.myclaw.server.config.ConfigStore;
 import com.myclaw.server.session.InMemorySessionManager;
 import com.myclaw.server.websocket.GatewayEventPublisher;
 import lombok.extern.slf4j.Slf4j;
@@ -28,15 +29,18 @@ public class AgentMethodHandler implements GatewayMethodHandler {
     private final InMemorySessionManager sessionManager;
     private final GatewayEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final ConfigStore configStore;
 
     public AgentMethodHandler(AgentLoopService agentLoopService,
                               InMemorySessionManager sessionManager,
                               GatewayEventPublisher eventPublisher,
-                              ObjectMapper objectMapper) {
+                              ObjectMapper objectMapper,
+                              ConfigStore configStore) {
         this.agentLoopService = agentLoopService;
         this.sessionManager = sessionManager;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
+        this.configStore = configStore;
     }
 
     @Override
@@ -64,7 +68,7 @@ public class AgentMethodHandler implements GatewayMethodHandler {
         String acceptedAt = Instant.now().toString();
 
         // Start agent loop in background and stream events to WS
-        agentLoopService.run(runId, agent, sess, req.getMessage(), req.getModel())
+        agentLoopService.run(runId, agent, sess, req.getMessage(), req.getModel(), configStore.toProviderConfig())
             .publishOn(Schedulers.boundedElastic())
             .subscribe(
                 event -> eventPublisher.sendEvent(session, "agent", event),

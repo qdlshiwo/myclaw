@@ -3,6 +3,7 @@ package com.myclaw.ai.runtime;
 import com.myclaw.ai.provider.ModelProvider;
 import com.myclaw.ai.provider.ModelProviderRegistry;
 import com.myclaw.ai.provider.StreamChunk;
+import com.myclaw.core.config.ProviderConfig;
 import com.myclaw.core.model.AgentContext;
 import com.myclaw.core.model.Session;
 import com.myclaw.core.protocol.ChatMessage;
@@ -27,12 +28,12 @@ public class AgentLoopService {
     private final ModelProviderRegistry providerRegistry;
     private final ConcurrentHashMap<String, SessionLane> lanes = new ConcurrentHashMap<>();
 
-    public Flux<AgentStreamEvent> run(String runId, AgentContext agent, Session session, String userMessage, String modelRef) {
+    public Flux<AgentStreamEvent> run(String runId, AgentContext agent, Session session, String userMessage, String modelRef, ProviderConfig providerConfig) {
         Sinks.Many<AgentStreamEvent> sink = Sinks.many().unicast().onBackpressureBuffer();
         String laneKey = session.getSessionKey();
 
         SessionLane lane = lanes.computeIfAbsent(laneKey, k -> new SessionLane());
-        lane.submit(() -> executeLoop(runId, agent, session, userMessage, modelRef, sink));
+        lane.submit(() -> executeLoop(runId, agent, session, userMessage, modelRef, providerConfig, sink));
 
         return sink.asFlux()
             .doOnTerminate(() -> {
@@ -43,7 +44,7 @@ public class AgentLoopService {
     }
 
     private void executeLoop(String runId, AgentContext agent, Session session,
-                             String userMessage, String modelRef,
+                             String userMessage, String modelRef, ProviderConfig providerConfig,
                              Sinks.Many<AgentStreamEvent> sink) {
         try {
             sink.tryEmitNext(AgentStreamEvent.lifecycle(runId, "start", null));
@@ -75,7 +76,7 @@ public class AgentLoopService {
 
             StringBuilder assistantContent = new StringBuilder();
 
-            provider.streamChat(modelRef, history, systemPrompt)
+            provider.streamChat(modelRef, history, systemPrompt, providerConfig)
                 .publishOn(Schedulers.boundedElastic())
                 .doOnNext(chunk -> {
                     switch (chunk.getType()) {

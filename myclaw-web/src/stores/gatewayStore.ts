@@ -10,6 +10,9 @@ export const useGatewayStore = defineStore('gateway', () => {
   const streaming = ref(false)
   const currentRunId = ref<string | null>(null)
   const currentDelta = ref('')
+  const currentSession = ref('main')
+  const config = ref<Record<string, string> | null>(null)
+  const models = ref<{ id: string; name: string }[]>([])
 
   const isConnected = computed(() => gateway.connected.value)
 
@@ -58,26 +61,80 @@ export const useGatewayStore = defineStore('gateway', () => {
 
   async function sendMessage(content: string) {
     ensureConnected()
-    await gateway.sendRequest('send', { content, sessionKey: 'main' })
+    await gateway.sendRequest('send', { content, sessionKey: currentSession.value })
   }
 
   async function runAgent(message: string) {
     ensureConnected()
+    const model = config.value?.model || 'gpt-4o-mini'
     // Add user message locally for immediate feedback
     messages.value.push({ role: 'user', content: message })
     await gateway.sendRequest('agent', {
       message,
-      sessionKey: 'main',
-      model: 'gpt-4o-mini',
+      sessionKey: currentSession.value,
+      model,
     })
   }
 
   async function loadChatHistory() {
     ensureConnected()
-    const data = await gateway.sendRequest('chat', { sessionKey: 'main' })
+    const data = await gateway.sendRequest('chat', { sessionKey: currentSession.value })
     if (data.messages) {
       messages.value = data.messages
     }
+  }
+
+  async function switchSession(key: string) {
+    currentSession.value = key
+    messages.value = []
+    await loadChatHistory()
+  }
+
+  async function listSessions() {
+    ensureConnected()
+    return gateway.sendRequest('sessions', {})
+  }
+
+  async function loadConfig() {
+    ensureConnected()
+    const data = await gateway.sendRequest('config', { action: 'get' })
+    if (data.config) {
+      config.value = data.config
+    }
+    return config.value
+  }
+
+  async function saveConfig(newConfig: Record<string, string>) {
+    ensureConnected()
+    const data = await gateway.sendRequest('config', { action: 'set', config: newConfig })
+    if (data.config) {
+      config.value = data.config
+    }
+    return config.value
+  }
+
+  async function loadModels() {
+    ensureConnected()
+    const data = await gateway.sendRequest('models', {})
+    if (data.models) {
+      models.value = data.models
+    }
+    return models.value
+  }
+
+  async function loadFileList(path: string) {
+    ensureConnected()
+    return gateway.sendRequest('file', { action: 'list', path })
+  }
+
+  async function readFile(path: string) {
+    ensureConnected()
+    return gateway.sendRequest('file', { action: 'read', path })
+  }
+
+  async function writeFile(path: string, content: string) {
+    ensureConnected()
+    return gateway.sendRequest('file', { action: 'write', path, content })
   }
 
   return {
@@ -85,10 +142,21 @@ export const useGatewayStore = defineStore('gateway', () => {
     messages,
     streaming,
     currentDelta,
+    currentSession,
+    config,
+    models,
     connect: gateway.connect,
     disconnect: gateway.disconnect,
     sendMessage,
     runAgent,
     loadChatHistory,
+    switchSession,
+    listSessions,
+    loadConfig,
+    saveConfig,
+    loadModels,
+    loadFileList,
+    readFile,
+    writeFile,
   }
 })

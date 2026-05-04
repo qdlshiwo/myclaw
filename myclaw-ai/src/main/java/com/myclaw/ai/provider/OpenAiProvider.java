@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.myclaw.core.config.ProviderConfig;
 import com.myclaw.core.protocol.ChatMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +20,6 @@ import java.util.List;
 public class OpenAiProvider implements ModelProvider {
 
     private final WebClient webClient;
-    private final String apiKey;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -28,7 +28,10 @@ public class OpenAiProvider implements ModelProvider {
     }
 
     @Override
-    public Flux<StreamChunk> streamChat(String model, List<ChatMessage> messages, String systemPrompt) {
+    public Flux<StreamChunk> streamChat(String model, List<ChatMessage> messages, String systemPrompt, ProviderConfig config) {
+        String apiKey = config != null && config.getApiKey() != null ? config.getApiKey() : "";
+        String baseUrl = config != null && config.getBaseUrl() != null ? config.getBaseUrl() : "https://api.openai.com";
+
         ObjectNode body = objectMapper.createObjectNode();
         body.put("model", model != null ? model : "gpt-4o-mini");
         body.put("stream", true);
@@ -45,8 +48,10 @@ public class OpenAiProvider implements ModelProvider {
             m.put("content", msg.getContent());
         }
 
+        String uri = baseUrl + "/v1/chat/completions";
+
         return webClient.post()
-            .uri("/v1/chat/completions")
+            .uri(uri)
             .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
             .contentType(MediaType.APPLICATION_JSON)
             .bodyValue(body)
