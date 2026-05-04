@@ -15,6 +15,7 @@ build/
 # Node
 node_modules/
 dist/
+.vite/
 *.log
 
 # OS
