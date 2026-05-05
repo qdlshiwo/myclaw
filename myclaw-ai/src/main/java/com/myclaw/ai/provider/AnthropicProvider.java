@@ -59,10 +59,10 @@ public class AnthropicProvider implements ModelProvider {
         }
 
         String uri = buildMessagesUri(baseUrl);
+        log.info("Anthropic request uri={}, model={}", uri, model);
 
         return webClient.post()
             .uri(uri)
-            .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
             .header("x-api-key", apiKey)
             .header("anthropic-version", "2023-06-01")
             .contentType(MediaType.APPLICATION_JSON)
@@ -71,7 +71,7 @@ public class AnthropicProvider implements ModelProvider {
             .bodyToFlux(String.class)
             .flatMap(line -> parseStreamLine(line))
             .onErrorResume(e -> {
-                log.error("Anthropic stream error", e);
+                log.error("Anthropic stream error: {}", e.getMessage(), e);
                 return Flux.just(StreamChunk.builder()
                     .type(StreamChunk.Type.ERROR)
                     .errorMessage(e.getMessage())

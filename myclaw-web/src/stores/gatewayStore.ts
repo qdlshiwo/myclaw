@@ -51,6 +51,18 @@ export const useGatewayStore = defineStore('gateway', () => {
     } else if (payload.stream === 'error') {
       streaming.value = false
       currentRunId.value = null
+      if (currentDelta.value) {
+        messages.value.push({
+          role: 'assistant',
+          content: currentDelta.value,
+          runId: payload.runId,
+        })
+      }
+      messages.value.push({
+        role: 'assistant',
+        content: '**Error:** ' + (payload.error || 'Unknown error'),
+        runId: payload.runId,
+      })
       currentDelta.value = ''
     }
   })
