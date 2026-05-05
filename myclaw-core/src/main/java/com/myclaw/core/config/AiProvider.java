@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
@@ -20,6 +21,9 @@ public class AiProvider {
     private List<ModelInfo> models;
     private String currentModel;
     private boolean enabled;
+    private String websiteUrl;
+    private String notes;
+    private Map<String, String> modelMappings;
 
     public ProviderConfig toProviderConfig() {
         return ProviderConfig.builder()

@@ -13,6 +13,7 @@ import org.springframework.web.socket.WebSocketSession;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class ProvidersMethodHandler implements GatewayMethodHandler {
@@ -87,6 +88,8 @@ public class ProvidersMethodHandler implements GatewayMethodHandler {
         ObjectNode obj = objectMapper.createObjectNode();
         obj.put("id", p.getId());
         obj.put("name", p.getName());
+        obj.put("websiteUrl", p.getWebsiteUrl());
+        obj.put("notes", p.getNotes());
         obj.put("baseUrl", p.getBaseUrl());
         obj.put("apiKey", p.getApiKey());
         obj.put("apiFormat", p.getApiFormat());
@@ -98,6 +101,12 @@ public class ProvidersMethodHandler implements GatewayMethodHandler {
                 ObjectNode mo = models.addObject();
                 mo.put("id", m.getId());
                 mo.put("name", m.getName());
+            }
+        }
+        ObjectNode mappings = obj.putObject("modelMappings");
+        if (p.getModelMappings() != null) {
+            for (Map.Entry<String, String> e : p.getModelMappings().entrySet()) {
+                mappings.put(e.getKey(), e.getValue());
             }
         }
         return obj;

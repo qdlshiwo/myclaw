@@ -34,10 +34,13 @@ export interface ModelInfo {
 export interface AiProvider {
   id: string
   name: string
+  websiteUrl?: string
+  notes?: string
   baseUrl: string
   apiKey: string
   apiFormat: string
   currentModel: string
   enabled: boolean
   models: ModelInfo[]
+  modelMappings?: Record<string, string>
 }

@@ -6,7 +6,7 @@ import com.myclaw.core.config.ProviderConfig;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,6 +22,7 @@ public class ProviderStore {
         providers.put("openai", AiProvider.builder()
             .id("openai")
             .name("OpenAI")
+            .websiteUrl("https://openai.com")
             .baseUrl("https://api.openai.com")
             .apiKey("")
             .apiFormat("openai")
@@ -33,11 +34,13 @@ public class ProviderStore {
             ))
             .currentModel("gpt-4o-mini")
             .enabled(true)
+            .modelMappings(new LinkedHashMap<>())
             .build());
 
         providers.put("anthropic", AiProvider.builder()
             .id("anthropic")
             .name("Anthropic")
+            .websiteUrl("https://www.anthropic.com")
             .baseUrl("https://api.anthropic.com")
             .apiKey("")
             .apiFormat("anthropic")
@@ -48,83 +51,93 @@ public class ProviderStore {
             ))
             .currentModel("claude-sonnet-4-20250514")
             .enabled(true)
+            .modelMappings(new LinkedHashMap<>())
             .build());
 
-        // Chinese model providers
+        // Chinese model providers (Anthropic-compatible endpoints)
         providers.put("deepseek", AiProvider.builder()
             .id("deepseek")
             .name("DeepSeek")
-            .baseUrl("https://api.deepseek.com")
+            .websiteUrl("https://platform.deepseek.com")
+            .baseUrl("https://api.deepseek.com/anthropic")
             .apiKey("")
-            .apiFormat("openai")
+            .apiFormat("anthropic")
             .models(List.of(
-                ModelInfo.builder().id("deepseek-chat").name("DeepSeek V3").build(),
-                ModelInfo.builder().id("deepseek-reasoner").name("DeepSeek R1").build()
+                ModelInfo.builder().id("deepseek-v4-pro").name("DeepSeek V4 Pro").build(),
+                ModelInfo.builder().id("deepseek-v4-flash").name("DeepSeek V4 Flash").build()
             ))
-            .currentModel("deepseek-chat")
+            .currentModel("deepseek-v4-pro")
             .enabled(true)
+            .modelMappings(new LinkedHashMap<>())
             .build());
 
         providers.put("glm", AiProvider.builder()
             .id("glm")
             .name("智谱 GLM")
-            .baseUrl("https://open.bigmodel.cn/api/paas/v4")
+            .websiteUrl("https://open.bigmodel.cn")
+            .baseUrl("https://open.bigmodel.cn/api/anthropic")
             .apiKey("")
-            .apiFormat("openai")
+            .apiFormat("anthropic")
             .models(List.of(
-                ModelInfo.builder().id("glm-4").name("GLM-4").build(),
-                ModelInfo.builder().id("glm-4-plus").name("GLM-4 Plus").build(),
-                ModelInfo.builder().id("glm-4-air").name("GLM-4 Air").build(),
-                ModelInfo.builder().id("glm-4-flash").name("GLM-4 Flash").build()
+                ModelInfo.builder().id("glm-5").name("GLM-5").build(),
+                ModelInfo.builder().id("glm-4.7").name("GLM-4.7").build()
             ))
-            .currentModel("glm-4")
+            .currentModel("glm-5")
             .enabled(true)
+            .modelMappings(new LinkedHashMap<>())
             .build());
 
         providers.put("kimi", AiProvider.builder()
             .id("kimi")
             .name("Kimi (Moonshot)")
-            .baseUrl("https://api.moonshot.cn")
+            .websiteUrl("https://platform.moonshot.cn")
+            .baseUrl("https://api.moonshot.cn/anthropic")
             .apiKey("")
-            .apiFormat("openai")
+            .apiFormat("anthropic")
             .models(List.of(
-                ModelInfo.builder().id("moonshot-v1-8k").name("Moonshot v1 8K").build(),
-                ModelInfo.builder().id("moonshot-v1-32k").name("Moonshot v1 32K").build(),
-                ModelInfo.builder().id("moonshot-v1-128k").name("Moonshot v1 128K").build()
+                ModelInfo.builder().id("kimi-k2.6").name("Kimi K2.6").build(),
+                ModelInfo.builder().id("kimi-k2.5").name("Kimi K2.5").build(),
+                ModelInfo.builder().id("kimi-k2").name("Kimi K2").build()
             ))
-            .currentModel("moonshot-v1-8k")
+            .currentModel("kimi-k2.6")
             .enabled(true)
+            .modelMappings(new LinkedHashMap<>())
             .build());
 
         providers.put("bailian", AiProvider.builder()
             .id("bailian")
             .name("阿里百炼 (Bailian)")
-            .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
+            .websiteUrl("https://bailian.console.aliyun.com")
+            .baseUrl("https://dashscope.aliyuncs.com/apps/anthropic")
             .apiKey("")
-            .apiFormat("openai")
+            .apiFormat("anthropic")
             .models(List.of(
-                ModelInfo.builder().id("qwen-max").name("Qwen Max").build(),
-                ModelInfo.builder().id("qwen-plus").name("Qwen Plus").build(),
-                ModelInfo.builder().id("qwen-turbo").name("Qwen Turbo").build(),
-                ModelInfo.builder().id("qwen-coder-plus").name("Qwen Coder Plus").build()
+                ModelInfo.builder().id("qwen3.6-plus").name("Qwen3.6 Plus").build(),
+                ModelInfo.builder().id("qwen3.5-plus").name("Qwen3.5 Plus").build(),
+                ModelInfo.builder().id("qwen3-max").name("Qwen3 Max").build(),
+                ModelInfo.builder().id("qwen3.6-coder-plus").name("Qwen3.6 Coder Plus").build()
             ))
-            .currentModel("qwen-plus")
+            .currentModel("qwen3.6-plus")
             .enabled(true)
+            .modelMappings(new LinkedHashMap<>())
             .build());
 
         providers.put("minimax", AiProvider.builder()
             .id("minimax")
             .name("MiniMax")
-            .baseUrl("https://api.minimax.chat")
+            .websiteUrl("https://platform.minimaxi.com")
+            .baseUrl("https://api.minimaxi.com/anthropic")
             .apiKey("")
-            .apiFormat("openai")
+            .apiFormat("anthropic")
             .models(List.of(
-                ModelInfo.builder().id("abab6.5").name("abab6.5").build(),
-                ModelInfo.builder().id("abab6.5s").name("abab6.5s").build(),
-                ModelInfo.builder().id("abab5.5").name("abab5.5").build()
+                ModelInfo.builder().id("MiniMax-M2.7").name("MiniMax M2.7").build(),
+                ModelInfo.builder().id("MiniMax-M2.7-highspeed").name("MiniMax M2.7 Highspeed").build(),
+                ModelInfo.builder().id("MiniMax-M2.5").name("MiniMax M2.5").build(),
+                ModelInfo.builder().id("MiniMax-M2.5-highspeed").name("MiniMax M2.5 Highspeed").build()
             ))
-            .currentModel("abab6.5")
+            .currentModel("MiniMax-M2.7")
             .enabled(true)
+            .modelMappings(new LinkedHashMap<>())
             .build());
     }
 
@@ -139,6 +152,9 @@ public class ProviderStore {
     public void addOrUpdate(AiProvider provider) {
         if (provider.getId() == null || provider.getId().isEmpty()) {
             provider.setId(java.util.UUID.randomUUID().toString().substring(0, 8));
+        }
+        if (provider.getModelMappings() == null) {
+            provider.setModelMappings(new LinkedHashMap<>());
         }
         providers.put(provider.getId(), provider);
     }

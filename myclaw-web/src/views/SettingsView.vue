@@ -66,14 +66,20 @@
         <h3>{{ isAdding ? 'Add Provider' : 'Edit Provider' }}</h3>
 
         <div class="dialog-body">
-          <div class="field">
-            <label>Name</label>
-            <input v-model="editForm.name" type="text" placeholder="e.g. OpenAI" />
+          <div class="field-row">
+            <div class="field">
+              <label>Provider Name</label>
+              <input v-model="editForm.name" type="text" placeholder="e.g. OpenAI" />
+            </div>
+            <div class="field">
+              <label>Notes</label>
+              <input v-model="editForm.notes" type="text" placeholder="e.g. Company account" />
+            </div>
           </div>
 
           <div class="field">
-            <label>Base URL</label>
-            <input v-model="editForm.baseUrl" type="text" placeholder="https://api.openai.com" />
+            <label>Website URL</label>
+            <input v-model="editForm.websiteUrl" type="text" placeholder="https://..." />
           </div>
 
           <div class="field">
@@ -82,11 +88,8 @@
           </div>
 
           <div class="field">
-            <label>API Format</label>
-            <select v-model="editForm.apiFormat">
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
-            </select>
+            <label>Base URL (Request Address)</label>
+            <input v-model="editForm.baseUrl" type="text" placeholder="https://api.openai.com" />
           </div>
 
           <div class="field">
@@ -101,15 +104,66 @@
             </label>
           </div>
 
-          <div class="field models-field">
-            <label>Models</label>
-            <div class="model-list">
-              <div v-for="(m, idx) in editForm.models" :key="idx" class="model-row">
-                <input v-model="m.id" type="text" placeholder="model-id" />
-                <input v-model="m.name" type="text" placeholder="Display Name" />
-                <button class="btn-row-delete" @click="removeModel(idx)">x</button>
+          <!-- Advanced Options -->
+          <div class="advanced-section">
+            <button type="button" class="advanced-toggle" @click="advancedExpanded = !advancedExpanded">
+              <span class="arrow" :class="{ expanded: advancedExpanded }">&#9654;</span>
+              Advanced Options
+            </button>
+            <div v-if="advancedExpanded" class="advanced-content">
+              <div class="field">
+                <label>API Format</label>
+                <select v-model="editForm.apiFormat">
+                  <option value="openai">OpenAI Chat Completions</option>
+                  <option value="anthropic">Anthropic Messages</option>
+                </select>
+                <span class="hint">Select the API input format of the provider</span>
               </div>
-              <button class="btn-row-add" @click="addModel">+ Add Model</button>
+
+              <!-- Model Mappings -->
+              <div class="model-mappings">
+                <div class="mappings-header">
+                  <label>Model Mappings</label>
+                  <button type="button" class="btn-quick-set" @click="quickSetModels" :disabled="!canQuickSet">
+                    Quick Set
+                  </button>
+                </div>
+                <span class="hint">Map model roles to actual provider model IDs</span>
+                <div class="mappings-grid">
+                  <div class="mapping-field">
+                    <label>Main Model</label>
+                    <input v-model="modelMappings.main" type="text" placeholder="model-id" />
+                  </div>
+                  <div class="mapping-field">
+                    <label>Thinking Model</label>
+                    <input v-model="modelMappings.thinking" type="text" placeholder="model-id" />
+                  </div>
+                  <div class="mapping-field">
+                    <label>Haiku Default</label>
+                    <input v-model="modelMappings.haiku" type="text" placeholder="model-id" />
+                  </div>
+                  <div class="mapping-field">
+                    <label>Sonnet Default</label>
+                    <input v-model="modelMappings.sonnet" type="text" placeholder="model-id" />
+                  </div>
+                  <div class="mapping-field">
+                    <label>Opus Default</label>
+                    <input v-model="modelMappings.opus" type="text" placeholder="model-id" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="field models-field">
+                <label>Available Models</label>
+                <div class="model-list">
+                  <div v-for="(m, idx) in editForm.models" :key="idx" class="model-row">
+                    <input v-model="m.id" type="text" placeholder="model-id" />
+                    <input v-model="m.name" type="text" placeholder="Display Name" />
+                    <button class="btn-row-delete" @click="removeModel(idx)">x</button>
+                  </div>
+                  <button class="btn-row-add" @click="addModel">+ Add Model</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -126,7 +180,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useGatewayStore } from '@/stores/gatewayStore'
 import type { AiProvider, ModelInfo } from '@/types/protocol'
 
@@ -136,10 +190,13 @@ const editing = ref(false)
 const isAdding = ref(false)
 const saving = ref(false)
 const switchingId = ref('')
+const advancedExpanded = ref(false)
 
 const emptyForm = (): Partial<AiProvider> & { models: ModelInfo[] } => ({
   id: '',
   name: '',
+  websiteUrl: '',
+  notes: '',
   baseUrl: '',
   apiKey: '',
   apiFormat: 'openai',
@@ -150,6 +207,18 @@ const emptyForm = (): Partial<AiProvider> & { models: ModelInfo[] } => ({
 
 const editForm = ref(emptyForm())
 
+const modelMappings = ref<Record<string, string>>({
+  main: '',
+  thinking: '',
+  haiku: '',
+  sonnet: '',
+  opus: '',
+})
+
+const canQuickSet = computed(() => {
+  return modelMappings.value.main || modelMappings.value.thinking || modelMappings.value.haiku || modelMappings.value.sonnet || modelMappings.value.opus
+})
+
 async function load() {
   await gatewayStore.loadProviders()
 }
@@ -157,6 +226,8 @@ async function load() {
 function startAdd() {
   isAdding.value = true
   editForm.value = emptyForm()
+  modelMappings.value = { main: '', thinking: '', haiku: '', sonnet: '', opus: '' }
+  advancedExpanded.value = false
   editing.value = true
 }
 
@@ -166,6 +237,15 @@ function editProvider(p: AiProvider) {
     ...p,
     models: p.models ? p.models.map((m) => ({ ...m })) : [],
   }
+  const mappings = p.modelMappings || {}
+  modelMappings.value = {
+    main: mappings.main || '',
+    thinking: mappings.thinking || '',
+    haiku: mappings.haiku || '',
+    sonnet: mappings.sonnet || '',
+    opus: mappings.opus || '',
+  }
+  advancedExpanded.value = !!(p.apiFormat !== 'openai' || Object.values(modelMappings.value).some((v) => v))
   editing.value = true
 }
 
@@ -181,11 +261,24 @@ function removeModel(idx: number) {
   editForm.value.models.splice(idx, 1)
 }
 
+function quickSetModels() {
+  const value = modelMappings.value.main || modelMappings.value.thinking || modelMappings.value.haiku || modelMappings.value.sonnet || modelMappings.value.opus || ''
+  if (!value) return
+  modelMappings.value.main = modelMappings.value.main || value
+  modelMappings.value.thinking = modelMappings.value.thinking || value
+  modelMappings.value.haiku = modelMappings.value.haiku || value
+  modelMappings.value.sonnet = modelMappings.value.sonnet || value
+  modelMappings.value.opus = modelMappings.value.opus || value
+}
+
 async function saveProvider() {
   saving.value = true
   const payload = {
     ...editForm.value,
     models: editForm.value.models.filter((m) => m.id.trim() !== ''),
+    modelMappings: Object.fromEntries(
+      Object.entries(modelMappings.value).filter(([, v]) => v.trim() !== '')
+    ),
   } as AiProvider
 
   try {
@@ -386,8 +479,8 @@ h2 {
   background: #161b22;
   border: 1px solid #30363d;
   border-radius: 12px;
-  width: 520px;
-  max-height: 85vh;
+  width: 580px;
+  max-height: 90vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -408,6 +501,12 @@ h2 {
 
 .field {
   margin-bottom: 14px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 .field label {
@@ -448,6 +547,124 @@ h2 {
   border-color: #58a6ff;
 }
 
+.hint {
+  display: block;
+  font-size: 11px;
+  color: #8b949e;
+  margin-top: 4px;
+}
+
+/* Advanced Section */
+.advanced-section {
+  margin-top: 8px;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.advanced-toggle {
+  width: 100%;
+  padding: 10px 14px;
+  background: #0d1117;
+  border: none;
+  color: #c9d1d9;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+.advanced-toggle:hover {
+  background: #161b22;
+}
+
+.arrow {
+  font-size: 10px;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+
+.arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.advanced-content {
+  padding: 14px;
+  border-top: 1px solid #21262d;
+}
+
+/* Model Mappings */
+.model-mappings {
+  margin-bottom: 14px;
+}
+
+.mappings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.mappings-header label {
+  font-size: 12px;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.btn-quick-set {
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-quick-set:hover {
+  border-color: #58a6ff;
+  color: #58a6ff;
+}
+
+.btn-quick-set:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.mappings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.mapping-field label {
+  display: block;
+  font-size: 11px;
+  color: #8b949e;
+  margin-bottom: 4px;
+}
+
+.mapping-field input {
+  width: 100%;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.mapping-field input:focus {
+  border-color: #58a6ff;
+}
+
+/* Models list */
 .model-list {
   display: flex;
   flex-direction: column;
