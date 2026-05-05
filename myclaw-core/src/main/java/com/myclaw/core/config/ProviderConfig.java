@@ -9,4 +9,5 @@ public class ProviderConfig {
     private String apiKey;
     private String baseUrl;
     private String model;
+    private String apiFormat; // "openai", "anthropic"
 }

@@ -8,8 +8,9 @@ import com.myclaw.ai.runtime.AgentStreamEvent;
 import com.myclaw.core.model.AgentContext;
 import com.myclaw.core.model.Session;
 import com.myclaw.core.protocol.AgentRequest;
+import com.myclaw.core.config.ProviderConfig;
 import com.myclaw.core.protocol.GatewayFrame;
-import com.myclaw.server.config.ConfigStore;
+import com.myclaw.server.config.ProviderStore;
 import com.myclaw.server.session.InMemorySessionManager;
 import com.myclaw.server.websocket.GatewayEventPublisher;
 import lombok.extern.slf4j.Slf4j;
@@ -29,18 +30,18 @@ public class AgentMethodHandler implements GatewayMethodHandler {
     private final InMemorySessionManager sessionManager;
     private final GatewayEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
-    private final ConfigStore configStore;
+    private final ProviderStore providerStore;
 
     public AgentMethodHandler(AgentLoopService agentLoopService,
                               InMemorySessionManager sessionManager,
                               GatewayEventPublisher eventPublisher,
                               ObjectMapper objectMapper,
-                              ConfigStore configStore) {
+                              ProviderStore providerStore) {
         this.agentLoopService = agentLoopService;
         this.sessionManager = sessionManager;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
-        this.configStore = configStore;
+        this.providerStore = providerStore;
     }
 
     @Override
@@ -68,7 +69,9 @@ public class AgentMethodHandler implements GatewayMethodHandler {
         String acceptedAt = Instant.now().toString();
 
         // Start agent loop in background and stream events to WS
-        agentLoopService.run(runId, agent, sess, req.getMessage(), req.getModel(), configStore.toProviderConfig())
+        ProviderConfig providerConfig = providerStore.toCurrentProviderConfig();
+        String model = req.getModel() != null ? req.getModel() : providerConfig.getModel();
+        agentLoopService.run(runId, agent, sess, req.getMessage(), model, providerConfig)
             .publishOn(Schedulers.boundedElastic())
             .subscribe(
                 event -> eventPublisher.sendEvent(session, "agent", event),
@@ -94,7 +97,7 @@ public class AgentMethodHandler implements GatewayMethodHandler {
         req.setMessage(params.path("message").asText(""));
         req.setSessionKey(params.path("sessionKey").asText(null));
         req.setSessionId(params.path("sessionId").asText(null));
-        req.setModel(params.path("model").asText("gpt-4o-mini"));
+        req.setModel(params.path("model").asText(null));
         req.setThinking(params.path("thinking").asBoolean(false));
         req.setIdempotencyKey(params.path("idempotencyKey").asText(null));
         return req;

@@ -25,3 +25,19 @@ export interface ChatMessage {
   timestamp?: string
   runId?: string
 }
+
+export interface ModelInfo {
+  id: string
+  name: string
+}
+
+export interface AiProvider {
+  id: string
+  name: string
+  baseUrl: string
+  apiKey: string
+  apiFormat: string
+  currentModel: string
+  enabled: boolean
+  models: ModelInfo[]
+}

@@ -66,9 +66,11 @@ public class AgentLoopService {
             }
 
             String systemPrompt = buildSystemPrompt(agent);
-            ModelProvider provider = providerRegistry.resolve(modelRef);
+            String apiFormat = providerConfig != null && providerConfig.getApiFormat() != null
+                ? providerConfig.getApiFormat() : "openai";
+            ModelProvider provider = providerRegistry.resolve(modelRef, apiFormat);
             if (provider == null) {
-                sink.tryEmitNext(AgentStreamEvent.error(runId, "No provider available for model: " + modelRef));
+                sink.tryEmitNext(AgentStreamEvent.error(runId, "No provider available for apiFormat: " + apiFormat + ", model: " + modelRef));
                 sink.tryEmitNext(AgentStreamEvent.lifecycle(runId, "error", null));
                 sink.tryEmitComplete();
                 return;

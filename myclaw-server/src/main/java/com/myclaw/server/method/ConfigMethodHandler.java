@@ -4,21 +4,20 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.myclaw.core.protocol.GatewayFrame;
-import com.myclaw.server.config.ConfigStore;
+import com.myclaw.core.config.AiProvider;
+import com.myclaw.server.config.ProviderStore;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.WebSocketSession;
 import reactor.core.publisher.Mono;
 
-import java.util.Map;
-
 @Component
 public class ConfigMethodHandler implements GatewayMethodHandler {
 
-    private final ConfigStore configStore;
+    private final ProviderStore providerStore;
     private final ObjectMapper objectMapper;
 
-    public ConfigMethodHandler(ConfigStore configStore, ObjectMapper objectMapper) {
-        this.configStore = configStore;
+    public ConfigMethodHandler(ProviderStore providerStore, ObjectMapper objectMapper) {
+        this.providerStore = providerStore;
         this.objectMapper = objectMapper;
     }
 
@@ -36,15 +35,21 @@ public class ConfigMethodHandler implements GatewayMethodHandler {
             JsonNode configNode = params.path("config");
             if (configNode.isObject()) {
                 configNode.fields().forEachRemaining(entry -> {
-                    configStore.set(entry.getKey(), entry.getValue().asText(""));
+                    providerStore.setConfigValue(entry.getKey(), entry.getValue().asText(""));
                 });
             }
         }
 
-        Map<String, String> all = configStore.getAll();
+        AiProvider current = providerStore.getCurrentProvider();
         ObjectNode payload = objectMapper.createObjectNode();
         ObjectNode configObj = payload.putObject("config");
-        all.forEach(configObj::put);
+        if (current != null) {
+            configObj.put("model", current.getCurrentModel());
+            configObj.put("baseUrl", current.getBaseUrl());
+            configObj.put("apiKey", current.getApiKey());
+            configObj.put("provider", current.getId());
+            configObj.put("providerName", current.getName());
+        }
 
         return Mono.just(GatewayFrame.builder()
             .type("res")
