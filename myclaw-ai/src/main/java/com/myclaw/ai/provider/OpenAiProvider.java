@@ -27,6 +27,26 @@ public class OpenAiProvider implements ModelProvider {
         return "openai";
     }
 
+    private String buildChatUri(String baseUrl) {
+        if (baseUrl == null || baseUrl.isEmpty()) {
+            baseUrl = "https://api.openai.com";
+        }
+        // Remove trailing slash
+        if (baseUrl.endsWith("/")) {
+            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+        }
+        // If URL already contains chat completions path, use as-is
+        if (baseUrl.contains("/chat/completions") || baseUrl.contains("/chatcompletion")) {
+            return baseUrl;
+        }
+        // If URL ends with version segment like /v1, /v4, append /chat/completions
+        if (baseUrl.matches(".*/v\\d+$") || baseUrl.matches(".*/v\\d+\\.\\d+$")) {
+            return baseUrl + "/chat/completions";
+        }
+        // Default: append /v1/chat/completions
+        return baseUrl + "/v1/chat/completions";
+    }
+
     @Override
     public Flux<StreamChunk> streamChat(String model, List<ChatMessage> messages, String systemPrompt, ProviderConfig config) {
         String apiKey = config != null && config.getApiKey() != null ? config.getApiKey() : "";
@@ -48,7 +68,7 @@ public class OpenAiProvider implements ModelProvider {
             m.put("content", msg.getContent());
         }
 
-        String uri = baseUrl + "/v1/chat/completions";
+        String uri = buildChatUri(baseUrl);
 
         return webClient.post()
             .uri(uri)

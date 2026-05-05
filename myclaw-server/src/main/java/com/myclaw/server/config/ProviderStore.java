@@ -49,6 +49,83 @@ public class ProviderStore {
             .currentModel("claude-sonnet-4-20250514")
             .enabled(true)
             .build());
+
+        // Chinese model providers
+        providers.put("deepseek", AiProvider.builder()
+            .id("deepseek")
+            .name("DeepSeek")
+            .baseUrl("https://api.deepseek.com")
+            .apiKey("")
+            .apiFormat("openai")
+            .models(List.of(
+                ModelInfo.builder().id("deepseek-chat").name("DeepSeek V3").build(),
+                ModelInfo.builder().id("deepseek-reasoner").name("DeepSeek R1").build()
+            ))
+            .currentModel("deepseek-chat")
+            .enabled(true)
+            .build());
+
+        providers.put("glm", AiProvider.builder()
+            .id("glm")
+            .name("智谱 GLM")
+            .baseUrl("https://open.bigmodel.cn/api/paas/v4")
+            .apiKey("")
+            .apiFormat("openai")
+            .models(List.of(
+                ModelInfo.builder().id("glm-4").name("GLM-4").build(),
+                ModelInfo.builder().id("glm-4-plus").name("GLM-4 Plus").build(),
+                ModelInfo.builder().id("glm-4-air").name("GLM-4 Air").build(),
+                ModelInfo.builder().id("glm-4-flash").name("GLM-4 Flash").build()
+            ))
+            .currentModel("glm-4")
+            .enabled(true)
+            .build());
+
+        providers.put("kimi", AiProvider.builder()
+            .id("kimi")
+            .name("Kimi (Moonshot)")
+            .baseUrl("https://api.moonshot.cn")
+            .apiKey("")
+            .apiFormat("openai")
+            .models(List.of(
+                ModelInfo.builder().id("moonshot-v1-8k").name("Moonshot v1 8K").build(),
+                ModelInfo.builder().id("moonshot-v1-32k").name("Moonshot v1 32K").build(),
+                ModelInfo.builder().id("moonshot-v1-128k").name("Moonshot v1 128K").build()
+            ))
+            .currentModel("moonshot-v1-8k")
+            .enabled(true)
+            .build());
+
+        providers.put("bailian", AiProvider.builder()
+            .id("bailian")
+            .name("阿里百炼 (Bailian)")
+            .baseUrl("https://dashscope.aliyuncs.com/compatible-mode")
+            .apiKey("")
+            .apiFormat("openai")
+            .models(List.of(
+                ModelInfo.builder().id("qwen-max").name("Qwen Max").build(),
+                ModelInfo.builder().id("qwen-plus").name("Qwen Plus").build(),
+                ModelInfo.builder().id("qwen-turbo").name("Qwen Turbo").build(),
+                ModelInfo.builder().id("qwen-coder-plus").name("Qwen Coder Plus").build()
+            ))
+            .currentModel("qwen-plus")
+            .enabled(true)
+            .build());
+
+        providers.put("minimax", AiProvider.builder()
+            .id("minimax")
+            .name("MiniMax")
+            .baseUrl("https://api.minimax.chat")
+            .apiKey("")
+            .apiFormat("openai")
+            .models(List.of(
+                ModelInfo.builder().id("abab6.5").name("abab6.5").build(),
+                ModelInfo.builder().id("abab6.5s").name("abab6.5s").build(),
+                ModelInfo.builder().id("abab5.5").name("abab5.5").build()
+            ))
+            .currentModel("abab6.5")
+            .enabled(true)
+            .build());
     }
 
     public List<AiProvider> listAll() {
