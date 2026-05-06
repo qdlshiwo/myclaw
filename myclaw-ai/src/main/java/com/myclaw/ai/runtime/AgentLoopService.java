@@ -68,6 +68,8 @@ public class AgentLoopService {
             String systemPrompt = buildSystemPrompt(agent);
             String apiFormat = providerConfig != null && providerConfig.getApiFormat() != null
                 ? providerConfig.getApiFormat() : "openai";
+            log.info("Agent runId={} resolving provider for apiFormat={}, model={}, baseUrl={}",
+                     runId, apiFormat, modelRef, providerConfig != null ? providerConfig.getBaseUrl() : "null");
             ModelProvider provider = providerRegistry.resolve(modelRef, apiFormat);
             if (provider == null) {
                 sink.tryEmitNext(AgentStreamEvent.error(runId, "No provider available for apiFormat: " + apiFormat + ", model: " + modelRef));
@@ -75,12 +77,14 @@ public class AgentLoopService {
                 sink.tryEmitComplete();
                 return;
             }
+            log.info("Agent runId={} using provider={}, historySize={}", runId, provider.getProviderId(), history.size());
 
             StringBuilder assistantContent = new StringBuilder();
 
             provider.streamChat(modelRef, history, systemPrompt, providerConfig)
                 .publishOn(Schedulers.boundedElastic())
                 .doOnNext(chunk -> {
+                    log.info("Agent runId={} chunk type={}", runId, chunk.getType());
                     switch (chunk.getType()) {
                         case CONTENT -> {
                             assistantContent.append(chunk.getContent());

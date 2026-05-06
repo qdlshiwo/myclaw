@@ -8,11 +8,11 @@ import com.myclaw.core.config.ProviderConfig;
 import com.myclaw.core.protocol.ChatMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
 import java.util.List;
 
 @Slf4j
@@ -69,7 +69,9 @@ public class AnthropicProvider implements ModelProvider {
             .bodyValue(body)
             .retrieve()
             .bodyToFlux(String.class)
+            .doOnNext(line -> log.info("Anthropic SSE raw: {}", line))
             .flatMap(line -> parseStreamLine(line))
+            .timeout(Duration.ofSeconds(60))
             .onErrorResume(e -> {
                 log.error("Anthropic stream error: {}", e.getMessage(), e);
                 return Flux.just(StreamChunk.builder()
@@ -100,21 +102,26 @@ public class AnthropicProvider implements ModelProvider {
     }
 
     private Flux<StreamChunk> parseStreamLine(String line) {
+        if (line == null || line.isEmpty()) {
+            return Flux.empty();
+        }
+        // Skip event type lines in SSE
         if (line.startsWith("event: ")) {
-            // Store event type for next data line; for now skip
             return Flux.empty();
         }
-        if (!line.startsWith("data: ")) {
-            return Flux.empty();
+
+        String data = line;
+        if (line.startsWith("data: ")) {
+            data = line.substring(6);
         }
-        String data = line.substring(6);
         if ("[DONE]".equals(data)) {
             return Flux.just(StreamChunk.builder().type(StreamChunk.Type.FINISH).build());
         }
         try {
             JsonNode root = objectMapper.readTree(data);
-            String type = root.path("type").asText("");
 
+            // Try Anthropic native format first
+            String type = root.path("type").asText("");
             if ("content_block_delta".equals(type)) {
                 JsonNode delta = root.path("delta");
                 String text = delta.path("text").asText(null);
@@ -136,9 +143,58 @@ public class AnthropicProvider implements ModelProvider {
             } else if ("message_stop".equals(type)) {
                 return Flux.just(StreamChunk.builder().type(StreamChunk.Type.FINISH).build());
             }
+
+            // Fallback 1: OpenAI-compatible streaming format
+            JsonNode choices = root.path("choices");
+            if (choices.isArray() && !choices.isEmpty()) {
+                JsonNode delta = choices.get(0).path("delta");
+                String content = delta.path("content").asText(null);
+                if (content != null) {
+                    return Flux.just(StreamChunk.builder()
+                        .type(StreamChunk.Type.CONTENT)
+                        .content(content)
+                        .build());
+                }
+                String finish = choices.get(0).path("finish_reason").asText(null);
+                if (finish != null && !finish.isEmpty() && !"null".equals(finish)) {
+                    return Flux.just(StreamChunk.builder()
+                        .type(StreamChunk.Type.FINISH)
+                        .finishReason(finish)
+                        .build());
+                }
+            }
+
+            // Fallback 2: non-streaming Anthropic response (single JSON object)
+            JsonNode contentArr = root.path("content");
+            if (contentArr.isArray() && !contentArr.isEmpty()) {
+                StringBuilder sb = new StringBuilder();
+                for (JsonNode block : contentArr) {
+                    String text = block.path("text").asText(null);
+                    if (text != null) sb.append(text);
+                }
+                if (sb.length() > 0) {
+                    return Flux.just(
+                        StreamChunk.builder().type(StreamChunk.Type.CONTENT).content(sb.toString()).build(),
+                        StreamChunk.builder().type(StreamChunk.Type.FINISH).build()
+                    );
+                }
+            }
+
+            // Fallback 3: non-streaming OpenAI response
+            JsonNode message = root.path("choices").get(0).path("message");
+            if (!message.isMissingNode()) {
+                String content = message.path("content").asText(null);
+                if (content != null) {
+                    return Flux.just(
+                        StreamChunk.builder().type(StreamChunk.Type.CONTENT).content(content).build(),
+                        StreamChunk.builder().type(StreamChunk.Type.FINISH).build()
+                    );
+                }
+            }
+
             return Flux.empty();
         } catch (Exception e) {
-            log.warn("Failed to parse Anthropic SSE line: {}", line);
+            log.warn("Failed to parse SSE line: {}", line);
             return Flux.empty();
         }
     }
