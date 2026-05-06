@@ -15,6 +15,8 @@ import reactor.core.publisher.Sinks;
 import reactor.core.scheduler.Schedulers;
 
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -80,6 +82,7 @@ public class AgentLoopService {
             log.info("Agent runId={} using provider={}, historySize={}", runId, provider.getProviderId(), history.size());
 
             StringBuilder assistantContent = new StringBuilder();
+            final boolean[] finished = { false };
 
             provider.streamChat(modelRef, history, systemPrompt, providerConfig)
                 .publishOn(Schedulers.boundedElastic())
@@ -91,6 +94,8 @@ public class AgentLoopService {
                             sink.tryEmitNext(AgentStreamEvent.assistant(runId, chunk.getContent()));
                         }
                         case FINISH -> {
+                            if (finished[0]) return;
+                            finished[0] = true;
                             // Persist assistant message
                             ChatMessage assistantMsg = ChatMessage.builder()
                                 .role("assistant")
@@ -125,8 +130,12 @@ public class AgentLoopService {
     }
 
     private String buildSystemPrompt(AgentContext agent) {
+        String now = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+            .withZone(ZoneId.of("Asia/Shanghai"))
+            .format(Instant.now());
         return "You are " + agent.getName() + ", a helpful AI assistant.\n" +
                "Agent ID: " + agent.getAgentId() + "\n" +
+               "Current date and time: " + now + " (Asia/Shanghai)\n" +
                "Be concise and helpful.";
     }
 
