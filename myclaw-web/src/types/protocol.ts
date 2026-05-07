@@ -24,6 +24,7 @@ export interface ChatMessage {
   content: string
   timestamp?: string
   runId?: string
+  isError?: boolean
 }
 
 export interface ModelInfo {

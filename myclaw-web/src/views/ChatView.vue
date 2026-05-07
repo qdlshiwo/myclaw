@@ -12,9 +12,20 @@
         v-for="(msg, i) in gatewayStore.messages"
         :key="i"
         class="message"
-        :class="msg.role"
+        :class="[msg.role, { error: msg.isError }]"
       >
-        <div class="meta">{{ msg.role }}</div>
+        <div class="meta">
+          <span>{{ msg.role }}</span>
+          <button
+            v-if="msg.role === 'user'"
+            class="resend-btn"
+            title="Resend"
+            @click="resend(msg.content)"
+            :disabled="gatewayStore.streaming"
+          >
+            Retry
+          </button>
+        </div>
         <div class="content" v-html="renderMarkdown(msg.content)"></div>
       </div>
 
@@ -60,16 +71,46 @@ async function send() {
   await gatewayStore.runAgent(text)
 }
 
-// Auto scroll
+async function resend(content: string) {
+  if (gatewayStore.streaming) return
+  await gatewayStore.runAgent(content)
+}
+
+function addCopyButtons() {
+  nextTick(() => {
+    if (!messagesRef.value) return
+    messagesRef.value.querySelectorAll('.content pre').forEach((pre) => {
+      const el = pre as HTMLElement
+      if (el.dataset.copyBtn === '1') return
+      const btn = document.createElement('button')
+      btn.className = 'copy-btn'
+      btn.textContent = 'Copy'
+      btn.onclick = () => {
+        const code = el.querySelector('code')?.textContent || ''
+        navigator.clipboard.writeText(code).then(() => {
+          btn.textContent = 'Copied!'
+          setTimeout(() => (btn.textContent = 'Copy'), 2000)
+        })
+      }
+      el.style.position = 'relative'
+      el.dataset.copyBtn = '1'
+      el.appendChild(btn)
+    })
+  })
+}
+
+// Auto scroll & copy buttons
 watch(() => gatewayStore.messages.length, () => {
   nextTick(() => {
     messagesRef.value?.scrollTo({ top: messagesRef.value.scrollHeight, behavior: 'smooth' })
   })
+  addCopyButtons()
 })
 watch(() => gatewayStore.currentDelta, () => {
   nextTick(() => {
     messagesRef.value?.scrollTo({ top: messagesRef.value.scrollHeight, behavior: 'smooth' })
   })
+  addCopyButtons()
 })
 </script>
 
@@ -119,12 +160,39 @@ watch(() => gatewayStore.currentDelta, () => {
 .message.assistant {
   align-self: flex-start;
 }
+.message.error .content {
+  background: #3d1f1f;
+  border-color: #f85149;
+  color: #f85149;
+}
 .meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 11px;
   color: #8b949e;
   margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+.resend-btn {
+  background: transparent;
+  border: 1px solid #30363d;
+  color: #8b949e;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 10px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.resend-btn:hover {
+  background: #30363d;
+  color: #c9d1d9;
+}
+.resend-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .content {
   background: #21262d;
@@ -150,6 +218,26 @@ watch(() => gatewayStore.currentDelta, () => {
 .content :deep(code) {
   font-family: 'SF Mono', Monaco, monospace;
   font-size: 12px;
+}
+.content :deep(.copy-btn) {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.content :deep(pre:hover .copy-btn) {
+  opacity: 1;
+}
+.content :deep(.copy-btn:hover) {
+  background: #30363d;
 }
 .cursor {
   display: inline-block;

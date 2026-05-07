@@ -1,12 +1,17 @@
 package com.myclaw.ai.runtime;
 
+import com.myclaw.ai.provider.ChatCompletion;
 import com.myclaw.ai.provider.ModelProvider;
 import com.myclaw.ai.provider.ModelProviderRegistry;
 import com.myclaw.ai.provider.StreamChunk;
+import com.myclaw.ai.tool.Tool;
+import com.myclaw.ai.tool.ToolRegistry;
 import com.myclaw.core.config.ProviderConfig;
 import com.myclaw.core.model.AgentContext;
 import com.myclaw.core.model.Session;
 import com.myclaw.core.protocol.ChatMessage;
+import com.myclaw.core.store.SessionStore;
+import com.myclaw.core.tool.ToolDefinition;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,6 +33,8 @@ import java.util.concurrent.*;
 public class AgentLoopService {
 
     private final ModelProviderRegistry providerRegistry;
+    private final SessionStore sessionStore;
+    private final ToolRegistry toolRegistry;
     private final ConcurrentHashMap<String, SessionLane> lanes = new ConcurrentHashMap<>();
 
     public Flux<AgentStreamEvent> run(String runId, AgentContext agent, Session session, String userMessage, String modelRef, ProviderConfig providerConfig) {
@@ -60,6 +67,9 @@ public class AgentLoopService {
                 .build();
             session.getMessages().add(userMsg);
             session.setLastInteractionAt(Instant.now());
+            if (sessionStore != null) {
+                sessionStore.save(session);
+            }
 
             // Build message history for LLM (last 20 messages)
             List<ChatMessage> history = new ArrayList<>(session.getMessages());
@@ -81,45 +91,12 @@ public class AgentLoopService {
             }
             log.info("Agent runId={} using provider={}, historySize={}", runId, provider.getProviderId(), history.size());
 
-            StringBuilder assistantContent = new StringBuilder();
-            final boolean[] finished = { false };
-
-            provider.streamChat(modelRef, history, systemPrompt, providerConfig)
-                .publishOn(Schedulers.boundedElastic())
-                .doOnNext(chunk -> {
-                    log.info("Agent runId={} chunk type={}", runId, chunk.getType());
-                    switch (chunk.getType()) {
-                        case CONTENT -> {
-                            assistantContent.append(chunk.getContent());
-                            sink.tryEmitNext(AgentStreamEvent.assistant(runId, chunk.getContent()));
-                        }
-                        case FINISH -> {
-                            if (finished[0]) return;
-                            finished[0] = true;
-                            // Persist assistant message
-                            ChatMessage assistantMsg = ChatMessage.builder()
-                                .role("assistant")
-                                .content(assistantContent.toString())
-                                .timestamp(Instant.now().toString())
-                                .runId(runId)
-                                .build();
-                            session.getMessages().add(assistantMsg);
-                            sink.tryEmitNext(AgentStreamEvent.lifecycle(runId, "end", assistantContent.toString()));
-                        }
-                        case ERROR -> {
-                            sink.tryEmitNext(AgentStreamEvent.error(runId, chunk.getErrorMessage()));
-                            sink.tryEmitNext(AgentStreamEvent.lifecycle(runId, "error", null));
-                        }
-                    }
-                })
-                .doOnComplete(sink::tryEmitComplete)
-                .doOnError(err -> {
-                    log.error("Agent loop error", err);
-                    sink.tryEmitNext(AgentStreamEvent.error(runId, err.getMessage()));
-                    sink.tryEmitNext(AgentStreamEvent.lifecycle(runId, "error", null));
-                    sink.tryEmitComplete();
-                })
-                .subscribe();
+            List<ToolDefinition> availableTools = toolRegistry != null ? toolRegistry.listDefinitions() : List.of();
+            if (!availableTools.isEmpty()) {
+                runWithTools(runId, session, modelRef, providerConfig, systemPrompt, provider, availableTools, sink);
+            } else {
+                runStreaming(runId, session, modelRef, providerConfig, systemPrompt, provider, sink);
+            }
 
         } catch (Exception e) {
             log.error("Unexpected agent loop error", e);
@@ -127,6 +104,117 @@ public class AgentLoopService {
             sink.tryEmitNext(AgentStreamEvent.lifecycle(runId, "error", null));
             sink.tryEmitComplete();
         }
+    }
+
+    private void runStreaming(String runId, Session session, String modelRef, ProviderConfig providerConfig,
+                              String systemPrompt, ModelProvider provider, Sinks.Many<AgentStreamEvent> sink) {
+        List<ChatMessage> history = new ArrayList<>(session.getMessages());
+        if (history.size() > 20) {
+            history = history.subList(history.size() - 20, history.size());
+        }
+
+        StringBuilder assistantContent = new StringBuilder();
+        final boolean[] finished = { false };
+
+        provider.streamChat(modelRef, history, systemPrompt, providerConfig)
+            .publishOn(Schedulers.boundedElastic())
+            .doOnNext(chunk -> {
+                log.info("Agent runId={} chunk type={}", runId, chunk.getType());
+                switch (chunk.getType()) {
+                    case CONTENT -> {
+                        assistantContent.append(chunk.getContent());
+                        sink.tryEmitNext(AgentStreamEvent.assistant(runId, chunk.getContent()));
+                    }
+                    case FINISH -> {
+                        if (finished[0]) return;
+                        finished[0] = true;
+                        ChatMessage assistantMsg = ChatMessage.builder()
+                            .role("assistant")
+                            .content(assistantContent.toString())
+                            .timestamp(Instant.now().toString())
+                            .runId(runId)
+                            .build();
+                        session.getMessages().add(assistantMsg);
+                        if (sessionStore != null) {
+                            sessionStore.save(session);
+                        }
+                        sink.tryEmitNext(AgentStreamEvent.lifecycle(runId, "end", assistantContent.toString()));
+                    }
+                    case ERROR -> {
+                        sink.tryEmitNext(AgentStreamEvent.error(runId, chunk.getErrorMessage()));
+                        sink.tryEmitNext(AgentStreamEvent.lifecycle(runId, "error", null));
+                    }
+                }
+            })
+            .doOnComplete(sink::tryEmitComplete)
+            .doOnError(err -> {
+                log.error("Agent loop error", err);
+                sink.tryEmitNext(AgentStreamEvent.error(runId, err.getMessage()));
+                sink.tryEmitNext(AgentStreamEvent.lifecycle(runId, "error", null));
+                sink.tryEmitComplete();
+            })
+            .subscribe();
+    }
+
+    private void runWithTools(String runId, Session session, String modelRef, ProviderConfig providerConfig,
+                              String systemPrompt, ModelProvider provider, List<ToolDefinition> tools,
+                              Sinks.Many<AgentStreamEvent> sink) {
+        int maxRounds = 5;
+        String finalContent = null;
+
+        for (int round = 0; round < maxRounds; round++) {
+            List<ChatMessage> history = new ArrayList<>(session.getMessages());
+            if (history.size() > 20) {
+                history = history.subList(history.size() - 20, history.size());
+            }
+
+            log.info("Agent runId={} tool round={}", runId, round);
+            ChatCompletion completion = provider.chatComplete(modelRef, history, systemPrompt, providerConfig, tools);
+
+            if (completion.getToolCalls() == null || completion.getToolCalls().isEmpty()) {
+                finalContent = completion.getContent();
+                break;
+            }
+
+            // Add assistant message with tool calls
+            ChatMessage assistantMsg = ChatMessage.builder()
+                .role("assistant")
+                .content(completion.getContent() != null ? completion.getContent() : "")
+                .build();
+            session.getMessages().add(assistantMsg);
+
+            // Execute tools
+            for (com.myclaw.core.tool.ToolCall tc : completion.getToolCalls()) {
+                Tool tool = toolRegistry.get(tc.getName());
+                String result = tool != null ? tool.execute(tc.getArguments()) : "Error: tool not found: " + tc.getName();
+                ChatMessage toolResult = ChatMessage.builder()
+                    .role("tool")
+                    .content(result)
+                    .toolCallId(tc.getId())
+                    .build();
+                session.getMessages().add(toolResult);
+            }
+
+            if (sessionStore != null) {
+                sessionStore.save(session);
+            }
+        }
+
+        if (finalContent != null && !finalContent.isEmpty()) {
+            sink.tryEmitNext(AgentStreamEvent.assistant(runId, finalContent));
+            ChatMessage assistantMsg = ChatMessage.builder()
+                .role("assistant")
+                .content(finalContent)
+                .timestamp(Instant.now().toString())
+                .runId(runId)
+                .build();
+            session.getMessages().add(assistantMsg);
+            if (sessionStore != null) {
+                sessionStore.save(session);
+            }
+        }
+        sink.tryEmitNext(AgentStreamEvent.lifecycle(runId, "end", finalContent));
+        sink.tryEmitComplete();
     }
 
     private String buildSystemPrompt(AgentContext agent) {

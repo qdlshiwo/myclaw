@@ -21,4 +21,10 @@ public class ChatMessage {
 
     @JsonProperty("runId")
     private String runId;
+
+    @JsonProperty("toolCalls")
+    private String toolCalls;
+
+    @JsonProperty("toolCallId")
+    private String toolCallId;
 }

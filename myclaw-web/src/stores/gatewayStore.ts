@@ -60,8 +60,9 @@ export const useGatewayStore = defineStore('gateway', () => {
       }
       messages.value.push({
         role: 'assistant',
-        content: '**Error:** ' + (payload.error || 'Unknown error'),
+        content: payload.error || 'Unknown error',
         runId: payload.runId,
+        isError: true,
       })
       currentDelta.value = ''
     }
