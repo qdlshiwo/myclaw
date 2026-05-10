@@ -46,6 +46,18 @@ public class GatewayWebSocketHandler extends TextWebSocketHandler implements Gat
                 sendError(session, null, "invalid_frame", "Expected req frame");
                 return;
             }
+            // Log user request (method + key fields)
+            String method = frame.getMethod();
+            JsonNode params = frame.getParams();
+            if (params != null) {
+                String content = params.path("content").asText(null);
+                String msg = params.path("message").asText(null);
+                String sessionKey = params.path("sessionKey").asText(null);
+                String logContent = content != null ? content : (msg != null ? msg : "(no content)");
+                log.info("WS request: method={}, sessionKey={}, content={}", method, sessionKey, logContent);
+            } else {
+                log.info("WS request: method={}", method);
+            }
             handleRequest(session, frame);
         } catch (Exception e) {
             log.error("Failed to handle message: {}", payload, e);

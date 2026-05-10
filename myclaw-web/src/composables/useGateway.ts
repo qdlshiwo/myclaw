@@ -1,5 +1,9 @@
 import { ref } from 'vue'
 
+const WS_URL = `ws://${location.host}/ws`
+const RECONNECT_DELAY = 3000
+const MAX_RECONNECT_ATTEMPTS = 10
+
 export function useGateway() {
   const ws = ref<WebSocket | null>(null)
   const connected = ref(false)
@@ -10,7 +14,10 @@ export function useGateway() {
   const pendingResolvers = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void }>()
   const eventListeners = new Map<string, Set<(payload: any) => void>>()
 
-  function connect(url: string = `ws://${location.host}/ws`) {
+  let reconnectAttempts = 0
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+  function connect(url: string = WS_URL) {
     if (ws.value?.readyState === WebSocket.OPEN) return
     connecting.value = true
     error.value = null
@@ -19,6 +26,7 @@ export function useGateway() {
     ws.value = socket
 
     socket.onopen = () => {
+      reconnectAttempts = 0
       // Send connect handshake
       sendRequest('connect', { deviceId: 'web-client', platform: 'web' })
         .then(() => {
@@ -52,12 +60,26 @@ export function useGateway() {
       connected.value = false
       connecting.value = false
       ws.value = null
+      scheduleReconnect(url)
     }
 
     socket.onerror = (e) => {
-      error.value = 'WebSocket error'
+      error.value = 'WebSocket connection failed, will retry...'
       connecting.value = false
     }
+  }
+
+  function scheduleReconnect(url: string) {
+    if (reconnectTimer) return
+    if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      error.value = `Failed to connect after ${MAX_RECONNECT_ATTEMPTS} attempts`
+      return
+    }
+    reconnectAttempts++
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null
+      connect(url)
+    }, RECONNECT_DELAY)
   }
 
   function sendRequest(method: string, params: any): Promise<any> {
@@ -79,6 +101,10 @@ export function useGateway() {
   }
 
   function disconnect() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
     ws.value?.close()
   }
 

@@ -1,58 +1,96 @@
 <template>
   <div class="chat-view">
-    <div class="header">
-      <h2>Chat</h2>
-      <button class="btn" @click="gatewayStore.loadChatHistory()" :disabled="!gatewayStore.isConnected">
-        Refresh
-      </button>
-    </div>
+    <!-- Session Sidebar -->
+    <aside class="session-sidebar">
+      <div class="sidebar-header">
+        <button class="new-session-btn" @click="createNewSession" :disabled="gatewayStore.streaming">
+          + New Session
+        </button>
+      </div>
+      <div class="session-list">
+        <div
+          v-for="s in gatewayStore.sessions"
+          :key="s.sessionKey"
+          class="session-item"
+          :class="{ active: s.sessionKey === gatewayStore.currentSession }"
+          @click="switchTo(s.sessionKey)"
+        >
+          <div class="session-name">{{ s.sessionKey }}</div>
+          <div class="session-meta">
+            <span>{{ s.messageCount }} msg</span>
+            <span v-if="s.lastInteractionAt">{{ formatDateShort(s.lastInteractionAt) }}</span>
+          </div>
+        </div>
+        <div v-if="gatewayStore.sessions.length === 0" class="empty-sessions">
+          No sessions yet
+        </div>
+      </div>
+    </aside>
 
-    <div class="messages" ref="messagesRef">
-      <div
-        v-for="(msg, i) in gatewayStore.messages"
-        :key="i"
-        class="message"
-        :class="[msg.role, { error: msg.isError }]"
-      >
-        <div class="meta">
-          <span>{{ msg.role }}</span>
-          <button
-            v-if="msg.role === 'user'"
-            class="resend-btn"
-            title="Resend"
-            @click="resend(msg.content)"
-            :disabled="gatewayStore.streaming"
-          >
-            Retry
+    <!-- Chat Area -->
+    <div class="chat-area">
+      <div class="header">
+        <h2>{{ gatewayStore.currentSession }}</h2>
+        <div class="header-actions">
+          <button class="btn" @click="gatewayStore.loadChatHistory()" :disabled="!gatewayStore.isConnected || gatewayStore.streaming">
+            Refresh
           </button>
         </div>
-        <div class="content" v-html="renderMarkdown(msg.content)"></div>
       </div>
 
-      <!-- Streaming delta -->
-      <div v-if="gatewayStore.streaming && gatewayStore.currentDelta" class="message assistant">
-        <div class="meta">assistant</div>
-        <div class="content" v-html="renderMarkdown(gatewayStore.currentDelta)"></div>
-        <span class="cursor"></span>
-      </div>
-    </div>
+      <div class="messages" ref="messagesRef">
+        <div
+          v-for="(msg, i) in gatewayStore.messages"
+          :key="i"
+          class="message"
+          :class="[msg.role, { error: msg.isError }]"
+        >
+          <div class="meta">
+            <span>{{ msg.role }}</span>
+            <button
+              v-if="msg.role === 'user'"
+              class="resend-btn"
+              title="Resend"
+              @click="resend(msg.content)"
+              :disabled="gatewayStore.streaming"
+            >
+              Retry
+            </button>
+          </div>
+          <div class="content" v-html="renderMarkdown(msg.content)"></div>
+        </div>
 
-    <div class="input-area">
-      <textarea
-        v-model="inputText"
-        @keydown.enter.prevent="send"
-        placeholder="Type a message..."
-        rows="2"
-      ></textarea>
-      <button class="send-btn" @click="send" :disabled="!inputText.trim() || gatewayStore.streaming">
-        Send
-      </button>
+        <!-- Streaming delta -->
+        <div v-if="gatewayStore.streaming && gatewayStore.currentDelta" class="message assistant">
+          <div class="meta">assistant</div>
+          <div class="content" v-html="renderMarkdown(gatewayStore.currentDelta)"></div>
+          <span class="cursor"></span>
+        </div>
+      </div>
+
+      <div class="input-area">
+        <div v-if="!gatewayStore.isConnected" class="offline-bar">
+          Waiting for server connection...
+        </div>
+        <div class="input-row">
+          <textarea
+            v-model="inputText"
+            @keydown.enter.prevent="send"
+            placeholder="Type a message..."
+            rows="2"
+            :disabled="!gatewayStore.isConnected"
+          ></textarea>
+          <button class="send-btn" @click="send" :disabled="!inputText.trim() || gatewayStore.streaming || !gatewayStore.isConnected">
+            Send
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, onMounted } from 'vue'
 import { useGatewayStore } from '@/stores/gatewayStore'
 import { marked } from 'marked'
 
@@ -74,6 +112,23 @@ async function send() {
 async function resend(content: string) {
   if (gatewayStore.streaming) return
   await gatewayStore.runAgent(content)
+}
+
+async function createNewSession() {
+  await gatewayStore.newSession()
+}
+
+async function switchTo(key: string) {
+  if (key === gatewayStore.currentSession) return
+  await gatewayStore.switchSession(key)
+}
+
+function formatDateShort(d: string) {
+  try {
+    return new Date(d).toLocaleDateString()
+  } catch {
+    return d
+  }
 }
 
 function addCopyButtons() {
@@ -112,13 +167,93 @@ watch(() => gatewayStore.currentDelta, () => {
   })
   addCopyButtons()
 })
+
+onMounted(() => {
+  // Auto-restore last session when connected
+  gatewayStore.autoRestoreSession()
+})
 </script>
 
 <style scoped>
 .chat-view {
   display: flex;
-  flex-direction: column;
   height: 100%;
+  overflow: hidden;
+}
+
+/* Session Sidebar */
+.session-sidebar {
+  width: 200px;
+  background: #161b22;
+  border-right: 1px solid #30363d;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.sidebar-header {
+  padding: 12px;
+  border-bottom: 1px solid #30363d;
+}
+.new-session-btn {
+  width: 100%;
+  background: #238636;
+  border: none;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.new-session-btn:hover { background: #2ea043; }
+.new-session-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.session-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+.session-item {
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+}
+.session-item:hover {
+  background: #21262d;
+}
+.session-item.active {
+  background: #21262d;
+  border-color: #58a6ff;
+}
+.session-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c9d1d9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.session-meta {
+  font-size: 11px;
+  color: #8b949e;
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+.empty-sessions {
+  color: #8b949e;
+  font-size: 12px;
+  padding: 20px 0;
+  text-align: center;
+}
+
+/* Chat Area */
+.chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 .header {
   display: flex;
@@ -126,10 +261,12 @@ watch(() => gatewayStore.currentDelta, () => {
   justify-content: space-between;
   padding: 12px 20px;
   border-bottom: 1px solid #30363d;
+  flex-shrink: 0;
 }
 .header h2 {
   font-size: 16px;
   font-weight: 600;
+  color: #c9d1d9;
 }
 .btn {
   background: #21262d;
@@ -253,11 +390,23 @@ watch(() => gatewayStore.currentDelta, () => {
 }
 
 .input-area {
-  display: flex;
-  gap: 10px;
   padding: 12px 20px;
   border-top: 1px solid #30363d;
   background: #161b22;
+  flex-shrink: 0;
+}
+.offline-bar {
+  background: #3d1f1f;
+  color: #f85149;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-bottom: 8px;
+  text-align: center;
+}
+.input-row {
+  display: flex;
+  gap: 10px;
 }
 .input-area textarea {
   flex: 1;
@@ -272,6 +421,9 @@ watch(() => gatewayStore.currentDelta, () => {
 }
 .input-area textarea:focus {
   border-color: #58a6ff;
+}
+.input-area textarea:disabled {
+  opacity: 0.5;
 }
 .send-btn {
   background: #238636;

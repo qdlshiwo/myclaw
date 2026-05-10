@@ -18,15 +18,41 @@ export const useGatewayStore = defineStore('gateway', () => {
   const providers = ref<AiProvider[]>([])
   const currentProviderId = ref<string>('')
 
+  // Sessions state
+  const sessions = ref<Array<{
+    sessionId: string
+    sessionKey: string
+    agentId: string
+    messageCount: number
+    createdAt?: string
+    lastInteractionAt?: string
+  }>>([])
+
   const isConnected = computed(() => gateway.connected.value)
+
   const currentProvider = computed(() =>
     providers.value.find((p) => p.id === currentProviderId.value) || null
   )
 
-  function ensureConnected() {
-    if (!gateway.connected.value) {
+  function ensureConnected(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (gateway.connected.value) {
+        resolve()
+        return
+      }
       gateway.connect()
-    }
+      // Wait up to 5s for connection
+      let attempts = 0
+      const timer = setInterval(() => {
+        if (gateway.connected.value) {
+          clearInterval(timer)
+          resolve()
+        } else if (attempts++ > 25) {
+          clearInterval(timer)
+          reject(new Error('Connection timeout'))
+        }
+      }, 200)
+    })
   }
 
   // Listen to agent stream events
@@ -48,6 +74,7 @@ export const useGatewayStore = defineStore('gateway', () => {
       streaming.value = false
       currentRunId.value = null
       currentDelta.value = ''
+      refreshSessions()
     } else if (payload.stream === 'error') {
       streaming.value = false
       currentRunId.value = null
@@ -65,6 +92,7 @@ export const useGatewayStore = defineStore('gateway', () => {
         isError: true,
       })
       currentDelta.value = ''
+      refreshSessions()
     }
   })
 
@@ -80,12 +108,12 @@ export const useGatewayStore = defineStore('gateway', () => {
   })
 
   async function sendMessage(content: string) {
-    ensureConnected()
+    try { await ensureConnected() } catch { return }
     await gateway.sendRequest('send', { content, sessionKey: currentSession.value })
   }
 
   async function runAgent(message: string, model?: string) {
-    ensureConnected()
+    try { await ensureConnected() } catch { return }
     const resolvedModel = model || currentProvider.value?.currentModel || ''
     // Add user message locally for immediate feedback
     messages.value.push({ role: 'user', content: message })
@@ -97,10 +125,14 @@ export const useGatewayStore = defineStore('gateway', () => {
   }
 
   async function loadChatHistory() {
-    ensureConnected()
-    const data = await gateway.sendRequest('chat', { sessionKey: currentSession.value })
-    if (data.messages) {
-      messages.value = data.messages
+    try { await ensureConnected() } catch { return }
+    try {
+      const data = await gateway.sendRequest('chat', { sessionKey: currentSession.value })
+      if (data.messages) {
+        messages.value = data.messages
+      }
+    } catch (e) {
+      console.warn('Failed to load chat history', e)
     }
   }
 
@@ -110,98 +142,192 @@ export const useGatewayStore = defineStore('gateway', () => {
     await loadChatHistory()
   }
 
+  async function refreshSessions() {
+    try { await ensureConnected() } catch { return }
+    try {
+      const data = await gateway.sendRequest('sessions', {})
+      if (data && data.sessions) {
+        sessions.value = data.sessions
+      }
+    } catch (e) {
+      console.warn('Failed to load sessions', e)
+    }
+  }
+
   async function listSessions() {
-    ensureConnected()
-    return gateway.sendRequest('sessions', {})
+    try { await ensureConnected() } catch { return { sessions: [] } }
+    try {
+      return await gateway.sendRequest('sessions', {})
+    } catch (e) {
+      console.warn('Failed to list sessions', e)
+      return { sessions: [] }
+    }
+  }
+
+  async function newSession() {
+    const key = `session-${Date.now()}`
+    currentSession.value = key
+    messages.value = []
+    await refreshSessions()
+    return key
+  }
+
+  async function autoRestoreSession() {
+    try { await ensureConnected() } catch { return }
+    try {
+      const data = await gateway.sendRequest('sessions', {})
+      if (data && data.sessions && data.sessions.length > 0) {
+        sessions.value = data.sessions
+        const key = data.lastSessionKey || data.sessions[0].sessionKey
+        if (key) {
+          currentSession.value = key
+          await loadChatHistory()
+        }
+      } else {
+        sessions.value = []
+        currentSession.value = 'main'
+        await loadChatHistory()
+      }
+    } catch (e) {
+      console.warn('Failed to auto-restore session', e)
+    }
   }
 
   async function loadConfig() {
-    ensureConnected()
-    const data = await gateway.sendRequest('config', { action: 'get' })
-    if (data.config) {
-      config.value = data.config
+    try { await ensureConnected() } catch { return null }
+    try {
+      const data = await gateway.sendRequest('config', { action: 'get' })
+      if (data.config) {
+        config.value = data.config
+      }
+      return config.value
+    } catch (e) {
+      return null
     }
-    return config.value
   }
 
   async function saveConfig(newConfig: Record<string, string>) {
-    ensureConnected()
-    const data = await gateway.sendRequest('config', { action: 'set', config: newConfig })
-    if (data.config) {
-      config.value = data.config
+    try { await ensureConnected() } catch { return null }
+    try {
+      const data = await gateway.sendRequest('config', { action: 'set', config: newConfig })
+      if (data.config) {
+        config.value = data.config
+      }
+      return config.value
+    } catch (e) {
+      return null
     }
-    return config.value
   }
 
   async function loadModels() {
-    ensureConnected()
-    const data = await gateway.sendRequest('models', {})
-    if (data.models) {
-      models.value = data.models
+    try { await ensureConnected() } catch { return [] }
+    try {
+      const data = await gateway.sendRequest('models', {})
+      if (data.models) {
+        models.value = data.models
+      }
+      return models.value
+    } catch (e) {
+      return []
     }
-    return models.value
   }
 
   async function loadFileList(path: string) {
-    ensureConnected()
-    return gateway.sendRequest('file', { action: 'list', path })
+    try { await ensureConnected() } catch { return [] }
+    try {
+      return await gateway.sendRequest('file', { action: 'list', path })
+    } catch (e) {
+      return []
+    }
   }
 
   async function readFile(path: string) {
-    ensureConnected()
-    return gateway.sendRequest('file', { action: 'read', path })
+    try { await ensureConnected() } catch { return null }
+    try {
+      return await gateway.sendRequest('file', { action: 'read', path })
+    } catch (e) {
+      return null
+    }
   }
 
   async function writeFile(path: string, content: string) {
-    ensureConnected()
-    return gateway.sendRequest('file', { action: 'write', path, content })
+    try { await ensureConnected() } catch { return null }
+    try {
+      return await gateway.sendRequest('file', { action: 'write', path, content })
+    } catch (e) {
+      return null
+    }
   }
 
   // Provider methods
   async function loadProviders() {
-    ensureConnected()
-    const data = await gateway.sendRequest('providers', { action: 'list' })
-    if (data.providers) {
-      providers.value = data.providers
-      currentProviderId.value = data.current || ''
+    try { await ensureConnected() } catch { return { providers: [], current: '' } }
+    try {
+      const data = await gateway.sendRequest('providers', { action: 'list' })
+      if (data.providers) {
+        providers.value = data.providers
+        currentProviderId.value = data.current || ''
+      }
+      return { providers: providers.value, current: currentProviderId.value }
+    } catch (e) {
+      return { providers: [], current: '' }
     }
-    return { providers: providers.value, current: currentProviderId.value }
   }
 
   async function getProvider(id: string) {
-    ensureConnected()
-    return gateway.sendRequest('providers', { action: 'get', id })
+    try { await ensureConnected() } catch { return null }
+    try {
+      return await gateway.sendRequest('providers', { action: 'get', id })
+    } catch (e) {
+      return null
+    }
   }
 
   async function addProvider(provider: Omit<AiProvider, 'id'> & { id?: string }) {
-    ensureConnected()
-    const data = await gateway.sendRequest('providers', { action: 'add', provider })
-    await loadProviders()
-    return data
+    try { await ensureConnected() } catch { return null }
+    try {
+      const data = await gateway.sendRequest('providers', { action: 'add', provider })
+      await loadProviders()
+      return data
+    } catch (e) {
+      return null
+    }
   }
 
   async function updateProvider(provider: AiProvider) {
-    ensureConnected()
-    const data = await gateway.sendRequest('providers', { action: 'update', provider })
-    await loadProviders()
-    return data
+    try { await ensureConnected() } catch { return null }
+    try {
+      const data = await gateway.sendRequest('providers', { action: 'update', provider })
+      await loadProviders()
+      return data
+    } catch (e) {
+      return null
+    }
   }
 
   async function deleteProvider(id: string) {
-    ensureConnected()
-    const data = await gateway.sendRequest('providers', { action: 'delete', id })
-    await loadProviders()
-    return data
+    try { await ensureConnected() } catch { return null }
+    try {
+      const data = await gateway.sendRequest('providers', { action: 'delete', id })
+      await loadProviders()
+      return data
+    } catch (e) {
+      return null
+    }
   }
 
   async function switchProvider(id: string) {
-    ensureConnected()
-    const data = await gateway.sendRequest('providers', { action: 'switch', id })
-    if (data.current) {
-      currentProviderId.value = data.current
+    try { await ensureConnected() } catch { return null }
+    try {
+      const data = await gateway.sendRequest('providers', { action: 'switch', id })
+      if (data.current) {
+        currentProviderId.value = data.current
+      }
+      await loadProviders()
+      return data
+    } catch (e) {
+      return null
     }
-    await loadProviders()
-    return data
   }
 
   return {
@@ -215,13 +341,17 @@ export const useGatewayStore = defineStore('gateway', () => {
     providers,
     currentProviderId,
     currentProvider,
+    sessions,
     connect: gateway.connect,
     disconnect: gateway.disconnect,
     sendMessage,
     runAgent,
     loadChatHistory,
     switchSession,
+    refreshSessions,
     listSessions,
+    newSession,
+    autoRestoreSession,
     loadConfig,
     saveConfig,
     loadModels,

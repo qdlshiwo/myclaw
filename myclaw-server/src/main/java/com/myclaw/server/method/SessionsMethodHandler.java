@@ -11,6 +11,8 @@ import org.springframework.web.socket.WebSocketSession;
 import reactor.core.publisher.Mono;
 
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.List;
 
 @Component
 public class SessionsMethodHandler implements GatewayMethodHandler {
@@ -32,9 +34,13 @@ public class SessionsMethodHandler implements GatewayMethodHandler {
     public Mono<GatewayFrame> handle(WebSocketSession session, GatewayFrame request) {
         Collection<Session> sessions = sessionManager.listAll();
 
+        List<Session> sorted = sessions.stream()
+            .sorted(Comparator.comparing(Session::getLastInteractionAt, Comparator.nullsLast(Comparator.reverseOrder())))
+            .toList();
+
         ObjectNode payload = objectMapper.createObjectNode();
         ArrayNode arr = payload.putArray("sessions");
-        for (Session s : sessions) {
+        for (Session s : sorted) {
             ObjectNode obj = arr.addObject();
             obj.put("sessionId", s.getSessionId());
             obj.put("sessionKey", s.getSessionKey());
@@ -43,6 +49,9 @@ public class SessionsMethodHandler implements GatewayMethodHandler {
             obj.put("createdAt", s.getCreatedAt() != null ? s.getCreatedAt().toString() : null);
             obj.put("lastInteractionAt", s.getLastInteractionAt() != null ? s.getLastInteractionAt().toString() : null);
         }
+
+        String lastSessionKey = sorted.isEmpty() ? null : sorted.get(0).getSessionKey();
+        payload.put("lastSessionKey", lastSessionKey);
 
         return Mono.just(GatewayFrame.builder()
             .type("res")

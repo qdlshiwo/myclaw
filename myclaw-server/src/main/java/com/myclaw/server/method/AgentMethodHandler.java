@@ -75,7 +75,14 @@ public class AgentMethodHandler implements GatewayMethodHandler {
             .publishOn(Schedulers.boundedElastic())
             .subscribe(
                 event -> eventPublisher.sendEvent(session, "agent", event),
-                err -> log.error("Agent stream error for runId={}", runId, err),
+                err -> {
+                    log.error("Agent stream error for runId={}", runId, err);
+                    // Send error event to frontend so user knows what happened
+                    AgentStreamEvent errorEvent = AgentStreamEvent.error(runId, err.getMessage());
+                    eventPublisher.sendEvent(session, "agent", errorEvent);
+                    AgentStreamEvent endEvent = AgentStreamEvent.lifecycle(runId, "error", null);
+                    eventPublisher.sendEvent(session, "agent", endEvent);
+                },
                 () -> log.debug("Agent stream completed for runId={}", runId)
             );
 
