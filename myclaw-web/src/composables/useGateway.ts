@@ -18,7 +18,7 @@ export function useGateway() {
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
   function connect(url: string = WS_URL) {
-    if (ws.value?.readyState === WebSocket.OPEN) return
+    if (ws.value?.readyState === WebSocket.OPEN || ws.value?.readyState === WebSocket.CONNECTING) return
     connecting.value = true
     error.value = null
 
