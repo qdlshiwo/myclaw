@@ -51,6 +51,7 @@ public class ConnectMethodHandler implements GatewayMethodHandler {
         methods.add("models");
         methods.add("providers");
         methods.add("file");
+        methods.add("cron");
 
         ArrayNode events = features.putArray("events");
         events.add("tick");

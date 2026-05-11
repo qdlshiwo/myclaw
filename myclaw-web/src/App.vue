@@ -5,6 +5,7 @@
       <nav>
         <router-link to="/chat" class="nav-item" active-class="active">Chat</router-link>
         <router-link to="/sessions" class="nav-item" active-class="active">Sessions</router-link>
+        <router-link to="/cron" class="nav-item" active-class="active">Cron</router-link>
         <router-link to="/files" class="nav-item" active-class="active">Files</router-link>
         <router-link to="/settings" class="nav-item" active-class="active">Settings</router-link>
       </nav>

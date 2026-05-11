@@ -20,6 +20,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -154,6 +155,79 @@ public class InMemorySessionManager implements SessionStore {
 
     public Collection<Session> listAll() {
         return sessions.values();
+    }
+
+    /**
+     * List sessions with pagination and optional fuzzy search.
+     */
+    public List<Session> listPaged(int page, int pageSize, String searchQuery) {
+        List<Session> sorted = sessions.values().stream()
+            .sorted(Comparator.comparing(Session::getLastInteractionAt, Comparator.nullsLast(Comparator.reverseOrder())))
+            .toList();
+
+        if (searchQuery != null && !searchQuery.isBlank()) {
+            String q = searchQuery.toLowerCase();
+            sorted = sorted.stream()
+                .filter(s -> s.getSessionKey().toLowerCase().contains(q)
+                    || s.getAgentId().toLowerCase().contains(q)
+                    || s.getMessages().stream().anyMatch(m ->
+                        m.getContent() != null && m.getContent().toLowerCase().contains(q)))
+                .toList();
+        }
+
+        int start = Math.max(0, page * pageSize);
+        int end = Math.min(start + pageSize, sorted.size());
+        return start >= sorted.size() ? List.of() : sorted.subList(start, end);
+    }
+
+    /**
+     * Total session count (optionally filtered).
+     */
+    public long countAll(String searchQuery) {
+        if (searchQuery == null || searchQuery.isBlank()) {
+            return sessions.size();
+        }
+        String q = searchQuery.toLowerCase();
+        return sessions.values().stream()
+            .filter(s -> s.getSessionKey().toLowerCase().contains(q)
+                || s.getAgentId().toLowerCase().contains(q)
+                || s.getMessages().stream().anyMatch(m ->
+                    m.getContent() != null && m.getContent().toLowerCase().contains(q)))
+            .count();
+    }
+
+    /**
+     * Delete a single session (both from memory and disk).
+     */
+    public boolean delete(String sessionKey) {
+        Session removed = sessions.remove(sessionKey);
+        locks.remove(sessionKey);
+        if (removed != null) {
+            try {
+                Path path = sessionsDir.resolve(sessionKey + ".jsonl");
+                Files.deleteIfExists(path);
+                Path tmpPath = sessionsDir.resolve(sessionKey + ".jsonl.tmp");
+                Files.deleteIfExists(tmpPath);
+                log.info("Deleted session {} ({} messages)", sessionKey, removed.getMessages().size());
+                return true;
+            } catch (IOException e) {
+                log.warn("Failed to delete session file for {}", sessionKey, e);
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Delete multiple sessions.
+     */
+    public int deleteAll(Collection<String> sessionKeys) {
+        int count = 0;
+        for (String key : sessionKeys) {
+            if (delete(key)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     public void clear() {
