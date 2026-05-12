@@ -344,6 +344,7 @@ export const useGatewayStore = defineStore('gateway', () => {
     sessions,
     connect: gateway.connect,
     disconnect: gateway.disconnect,
+    sendRequest: gateway.sendRequest,
     sendMessage,
     runAgent,
     loadChatHistory,
