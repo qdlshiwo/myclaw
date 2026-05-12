@@ -173,6 +173,8 @@ export const useGatewayStore = defineStore('gateway', () => {
   }
 
   async function autoRestoreSession() {
+    // Only auto-restore if user hasn't manually switched to a specific session
+    if (currentSession.value !== 'main' || messages.value.length > 0) return
     try { await ensureConnected() } catch { return }
     try {
       const data = await gateway.sendRequest('sessions', {})
